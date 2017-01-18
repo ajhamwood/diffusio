@@ -1,0 +1,265 @@
+<!doctype html>
+<!-- @author Aidan Hamwood | ajh@tuta.io -->
+<html lang="en">
+<head>
+  <title>Diffus.io</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:;base64,=">
+  <style>
+html, body {
+  margin: 0;
+  height: 100%
+}
+body {
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column
+}
+#boardContainer, svg, canvas {
+  height: 401px;
+  width: 401px;
+  cursor: pointer
+}
+svg {
+  float: right
+}
+canvas {
+  position: absolute;
+  z-index: -1
+}
+#complete {
+  width: 100%;
+  text-align: center;
+  position: absolute;
+  left: 0;
+  top: 2rem
+}
+nav {
+  position: absolute;
+  left: 2rem;
+  top: 5rem;
+  font-size: large
+}
+nav > label {
+  display: block;
+  border-radius: .8rem;
+  background: #f77;
+  padding: .3rem .5rem;
+  margin: .5rem;
+  text-align: center;
+  border: 2px solid #fff;
+  cursor: pointer;
+  width: 1em
+}
+input:checked + label {
+  border: 2px solid #f77;
+  background: #fff
+}
+input[type=checkbox] + label {
+  margin-top: 1rem;
+}
+input[type=checkbox]:checked + label {
+  width: 18rem;
+}
+input[type=checkbox]:checked + label::after {
+  display: block;
+  content: attr(data-tg-on);
+  font-size: small
+}
+#pbswrapper {
+  position: absolute;
+  right: 5rem;
+  top: 5rem;
+  font-size: large
+}
+.pb {
+  margin-left: 1rem
+}
+.hide, nav > input {
+  display: none
+}
+  </style>
+</head>
+<body>
+  <h1 id="complete" class="hide">Game over! Score: <span id="score"></span></h1>
+  <nav>
+    <h3>Difficulty</h3>
+    <input type="radio" name="nav" id="rad1" value="1" checked>
+    <label for="rad1">1</label>
+    <input type="radio" name="nav" id="rad2" value="2">
+    <label for="rad2">2</label>
+    <input type="radio" name="nav" id="rad3" value="3">
+    <label for="rad3">3</label>
+    <input type="radio" name="nav" id="rad4" value="4">
+    <label for="rad4">4</label>
+    <input type="checkbox" id="info">
+    <label for="info" data-tg-on="
+    How to play:
+    Click to build a wall and contain the spreading black squares.
+    You win when they cannot spread any further.
+    Try to get the lowest number that you can!
+    ">&#x2139;&#x20dd;</label>
+  </nav>
+  <div id="boardContainer">
+    <svg xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="smallGrid" width="8" height="8" patternUnits="userSpaceOnUse">
+          <path d="M 8 0 L 0 0 0 8" fill="none" stroke="gray" stroke-width="0.5"/>
+        </pattern>
+        <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+          <rect width="80" height="80" fill="url(#smallGrid)"/>
+          <path d="M 80 0 L 0 0 0 80" fill="none" stroke="gray" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid)" />
+    </svg>
+    <canvas id="board"></canvas>
+  </div>
+  <div id="pbswrapper">
+    <h3>Lowscores</h3>
+    <div id="pbs"></div>
+  </div>
+  <div id="stamps" class="hide">
+    <div id="pb"><div class="pb"></div></div>
+  </div>
+  <script>
+// Utilities
+//   $ enhances querySelectorAll
+function $(sel, node, a) { return (a = [].slice.call( (node || document).querySelectorAll(sel) )).length > 1 ? a : a[0] }
+
+//   addEvents enhances addEventListener
+function addEvents(obj) {
+  function add(n) { n.addEventListener(es[i], obj[q][e].bind(n), false) }
+  for (var q in obj) for (var e in obj[q]) {
+    var ns = q ? $(q) : [window, document], es = e.split(" "), el = es.length, i = 0;
+    for (; i < el; i++) typeof ns === "undefined" ? 0 : ns.constructor.name === "Array" ? ns.forEach(add) : add(ns)
+  }
+}
+
+//   drum interfaces indexedDB
+function Drum () {
+  var req = indexedDB.open("diffusio", 1), drum = this;
+  return new Promise(function (resolve) {
+    req.onupgradeneeded = function (e) {
+      drum._db = e.target.result;
+      var highscores = drum._db.createObjectStore("highscores", {autoIncrement: true});
+      highscores.createIndex("score", ["difficulty", "score"], {unique: false});
+    };
+    req.onsuccess = function (e) { drum._db = e.target.result; resolve(drum) }
+  })
+}
+Drum.prototype.getVals = function () {
+  var tx = this._db.transaction("highscores", "readwrite"),
+      store = tx.objectStore("highscores"), csr, vals = [],
+      range = IDBKeyRange.bound([difficulty, 0],[difficulty, dim*dim]);
+  return new Promise(function (resolve) {
+    store.index("score").openCursor(range).onsuccess = function (e) {
+      if (csr = e.target.result) {
+        vals.push(csr.value);
+        if (vals.length <= 20) return csr.continue()
+      }
+      resolve(vals);
+    }
+  })
+};
+Drum.prototype.appendVal = function (val) {
+  var tx = this._db.transaction(["highscores"], "readwrite"),
+      store = tx.objectStore("highscores");
+  return new Promise (function (resolve) { resolve(store.add(val)) })
+};
+Drum.prototype.constructor = Drum;
+
+// Game logic
+function stepBoard() {
+  var mid = Math.round(dim/2), x = mid, y = mid;
+  var count = 0;
+  while (grid[x][y] == 1) {
+    switch( Math.floor(4*Math.random()) ) {
+      case 0: x == 0 || walls[x-1][y] == 1 || x--;break;
+      case 1: x == dim-1 || walls[x+1][y] == 1 || x++;break;
+      case 2: y == 0 || walls[x][y-1] == 1 || y--;break;
+      case 3: y == dim-1 || walls[x][y+1] == 1 || y++;break
+    }
+    if (++count > 1000000) return finishBoard()
+  }
+  if (Math.exp(-difficulty) > (nowdif *= Math.random())) return (nowdif = 1);
+  grid[x][y] = 1
+  addUnit(x, y);
+  return stepBoard()
+}
+
+// UI
+function addUnit(x, y) {
+  bctx.fillStyle = "#000";
+  bctx.fillRect(boxpix*x, boxpix*y, boxpix, boxpix)
+}
+
+function addWall(x, y, s) {
+  bctx.fillStyle = s ? "#b00" : "#fff";
+  bctx.fillRect(boxpix*x, boxpix*y, boxpix, boxpix)
+}
+
+function finishBoard() {
+  $("#complete").classList.remove("hide");
+  var score = 0, i, j;
+  for (i = 0; i < dim; i++) for (j = 0; j < dim; j++) grid[i][j] == 0 || score++;
+  $("#score").textContent = score;
+  drum.appendVal({score, difficulty}).then(showPBs);
+}
+
+function showPBs() {
+  drum.getVals().then(function (vals) {
+    var node, pbs = $("#pbs");
+    while (pbs.hasChildNodes()) pbs.removeChild(pbs.lastChild);
+    for (var i = 0; i < vals.length; i++) {
+      node = $("#pb > div").cloneNode(true);
+      node.appendChild(document.createTextNode(vals[i].score));
+      $("#pbs").appendChild(node);
+    }
+  })
+}
+
+// Events
+addEvents({
+  "#boardContainer": {
+    click: function (e) {
+      e.stopPropagation();
+      var r = e.target.getBoundingClientRect(), x = Math.floor((e.clientX-r.x)/boxpix), y = Math.floor((e.clientY-r.y)/boxpix);
+      if (grid[x][y] == 1) return;
+      addWall(x, y, (walls[x][y] = 1-walls[x][y]));
+      stepBoard()
+    }
+  },
+  "nav > input[type=radio] + label": {
+    click: function (e) {
+      bctx.fillStyle = "#fff";
+      bctx.fillRect(0, 0, dim*boxpix, dim*boxpix);
+      $("#complete").classList.contains("hide") || $("#complete").classList.add("hide");
+      grid.forEach(function (x) {x.fill(0)});
+      walls.forEach(function (x) {x.fill(0)});
+      difficulty = parseInt(e.target.htmlFor.substr(-1,1));
+      nowdif = 1;
+      showPBs();
+      stepBoard()
+    }
+  }
+});
+
+// Init
+var dim = 50, boxpix = 8, grid = new Array(dim), walls = new Array(dim),
+    board = $("canvas#board"), bctx = board.getContext('2d'),
+    difficulty = parseInt($("nav > input[type=radio]:checked").id.substr(-1,1)), nowdif = 1;
+for (var z = 0; z < dim; z++) {
+  grid[z] = new Array(dim).fill(0);
+  walls[z] = new Array(dim).fill(0);
+}
+board.height = dim*boxpix;
+board.width = dim*boxpix;
+new Drum().then(function (drum) { window.drum = drum }).then(showPBs)
+stepBoard();
+  </script>
+</body>
+</html>
