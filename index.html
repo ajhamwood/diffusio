@@ -4,7 +4,7 @@
 <head>
   <title>Diffus.io</title>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1" />
   <link rel="icon" href="data:;base64,=">
   <style>
 html, body {
@@ -12,15 +12,14 @@ html, body {
   height: 100%
 }
 body {
-  overflow: hidden;
   display: flex;
   justify-content: center;
   align-items: center;
   flex-direction: column
 }
-#boardContainer, svg, canvas {
-  height: 401px;
-  width: 401px;
+boardContainer, svg, canvas {
+  height: 601px;
+  width: 601px;
   cursor: pointer
 }
 svg {
@@ -31,24 +30,28 @@ canvas {
   z-index: -1
 }
 #complete {
-  width: 100%;
   text-align: center;
-  position: absolute;
-  left: 0;
-  top: 2rem
+  position: fixed;
+  z-index: 1;
+  border: 2px solid #f66;
+  background: #fff;
+  padding: 0 .3rem
 }
 nav {
-  position: absolute;
-  left: 2rem;
-  top: 5rem;
-  font-size: large
+  position: fixed;
+  height: 100%;
+  left: 0;
+  top: 0;
+  padding-left: 2rem;
+  font-size: large;
+  z-index: 1
 }
 nav > label {
   display: block;
   border-radius: .8rem;
   background: #f77;
   padding: .3rem .5rem;
-  margin: .5rem;
+  margin: .5rem 1rem;
   text-align: center;
   border: 2px solid #fff;
   cursor: pointer;
@@ -70,9 +73,11 @@ input[type=checkbox]:checked + label::after {
   font-size: small
 }
 #pbswrapper {
-  position: absolute;
-  right: 5rem;
-  top: 5rem;
+  position: fixed;
+  height: 100%;
+  right: 0;
+  top: 0;
+  padding-right: 2rem;
   font-size: large
 }
 .pb {
@@ -80,6 +85,16 @@ input[type=checkbox]:checked + label::after {
 }
 .hide, nav > input {
   display: none
+}
+@media (max-height: 600px) {
+  body {
+    justify-content: flex-start
+  }
+}
+@media (min-height: 601px) {
+  #complete {
+    top: 2rem
+  }
 }
   </style>
 </head>
@@ -106,12 +121,12 @@ input[type=checkbox]:checked + label::after {
   <div id="boardContainer">
     <svg xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <pattern id="smallGrid" width="8" height="8" patternUnits="userSpaceOnUse">
-          <path d="M 8 0 L 0 0 0 8" fill="none" stroke="gray" stroke-width="0.5"/>
+        <pattern id="smallGrid" width="12" height="12" patternUnits="userSpaceOnUse">
+          <path d="M 12 0 L 0 0 0 12" fill="none" stroke="gray" stroke-width="0.5"/>
         </pattern>
-        <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
-          <rect width="80" height="80" fill="url(#smallGrid)"/>
-          <path d="M 80 0 L 0 0 0 80" fill="none" stroke="gray" stroke-width="1"/>
+        <pattern id="grid" width="120" height="120" patternUnits="userSpaceOnUse">
+          <rect width="120" height="120" fill="url(#smallGrid)"/>
+          <path d="M 120 0 L 0 0 0 120" fill="none" stroke="gray" stroke-width="1"/>
         </pattern>
       </defs>
       <rect width="100%" height="100%" fill="url(#grid)" />
@@ -151,7 +166,7 @@ function Drum () {
     req.onsuccess = function (e) { drum._db = e.target.result; resolve(drum) }
   })
 }
-Drum.prototype.getVals = function () {
+Drum.prototype.getVals = function (n) {
   var tx = this._db.transaction("highscores", "readwrite"),
       store = tx.objectStore("highscores"), csr, vals = [],
       range = IDBKeyRange.bound([difficulty, 0],[difficulty, dim*dim]);
@@ -159,7 +174,7 @@ Drum.prototype.getVals = function () {
     store.index("score").openCursor(range).onsuccess = function (e) {
       if (csr = e.target.result) {
         vals.push(csr.value);
-        if (vals.length <= 20) return csr.continue()
+        if (typeof n != "number" || vals.length <= n) return csr.continue()
       }
       resolve(vals);
     }
@@ -168,7 +183,7 @@ Drum.prototype.getVals = function () {
 Drum.prototype.appendVal = function (val) {
   var tx = this._db.transaction(["highscores"], "readwrite"),
       store = tx.objectStore("highscores");
-  return new Promise (function (resolve) { resolve(store.add(val)) })
+  return new Promise(function (resolve) { resolve(store.add(val)) })
 };
 Drum.prototype.constructor = Drum;
 
@@ -186,7 +201,7 @@ function stepBoard() {
     if (++count > 1000000) return finishBoard()
   }
   if (Math.exp(-difficulty) > (nowdif *= Math.random())) return (nowdif = 1);
-  grid[x][y] = 1
+  grid[x][y] = 1;
   addUnit(x, y);
   return stepBoard()
 }
@@ -198,7 +213,7 @@ function addUnit(x, y) {
 }
 
 function addWall(x, y, s) {
-  bctx.fillStyle = s ? "#b00" : "#fff";
+  bctx.fillStyle = "#b00";
   bctx.fillRect(boxpix*x, boxpix*y, boxpix, boxpix)
 }
 
@@ -207,19 +222,21 @@ function finishBoard() {
   var score = 0, i, j;
   for (i = 0; i < dim; i++) for (j = 0; j < dim; j++) grid[i][j] == 0 || score++;
   $("#score").textContent = score;
-  drum.appendVal({score, difficulty}).then(showPBs);
+  scores[difficulty].push(score);
+  scores[difficulty].sort(function(a,b) {return a-b});
+  drum.appendVal({score, difficulty});
+  showPBs(scores[difficulty])
 }
 
-function showPBs() {
-  drum.getVals().then(function (vals) {
-    var node, pbs = $("#pbs");
-    while (pbs.hasChildNodes()) pbs.removeChild(pbs.lastChild);
-    for (var i = 0; i < vals.length; i++) {
-      node = $("#pb > div").cloneNode(true);
-      node.appendChild(document.createTextNode(vals[i].score));
-      $("#pbs").appendChild(node);
-    }
-  })
+function showPBs(vals) {
+  if (scores[difficulty].length == 0) scores[difficulty] = vals.map(function(x) {return parseInt(x.score)});
+  var node, pbs = $("#pbs");
+  while (pbs.hasChildNodes()) pbs.removeChild(pbs.lastChild);
+  for (var i = 0; i < scores[difficulty].length && i < 20; i++) {
+    node = $("#pb > div").cloneNode(true);
+    node.appendChild(document.createTextNode(scores[difficulty][i]));
+    $("#pbs").appendChild(node);
+  }
 }
 
 // Events
@@ -227,9 +244,12 @@ addEvents({
   "#boardContainer": {
     click: function (e) {
       e.stopPropagation();
-      var r = e.target.getBoundingClientRect(), x = Math.floor((e.clientX-r.x)/boxpix), y = Math.floor((e.clientY-r.y)/boxpix);
-      if (grid[x][y] == 1) return;
-      addWall(x, y, (walls[x][y] = 1-walls[x][y]));
+      var r = e.target.getBoundingClientRect(),
+          x = Math.floor((e.clientX-(r.x||r.left))/window.boardscale/boxpix),
+          y = Math.floor((e.clientY-(r.y||r.top))/window.boardscale/boxpix);
+      if (grid[x][y] == 1 || walls[x][y] == 1) return;
+      walls[x][y] = 1;
+      addWall(x, y);
       stepBoard()
     }
   },
@@ -237,28 +257,64 @@ addEvents({
     click: function (e) {
       bctx.fillStyle = "#fff";
       bctx.fillRect(0, 0, dim*boxpix, dim*boxpix);
+      bctx.fillStyle = "#ff6";
+      bctx.fillRect(25*boxpix, 25*boxpix, boxpix, boxpix);
       $("#complete").classList.contains("hide") || $("#complete").classList.add("hide");
       grid.forEach(function (x) {x.fill(0)});
       walls.forEach(function (x) {x.fill(0)});
       difficulty = parseInt(e.target.htmlFor.substr(-1,1));
       nowdif = 1;
-      showPBs();
+      if (scores[difficulty].length == 0) drum.getVals().then(showPBs);
+      else showPBs(scores[difficulty]);
       stepBoard()
+    }
+  },
+  "": {
+    touchstart: function(e) {
+      e.stopPropagation();
+      if (e.touches[1]) {
+        e.preventDefault();
+        var x = e.touches[1].pageX - e.touches[0].pageX, y = e.touches[1].pageY - e.touches[0].pageY;
+        window.pinchscale = Math.sqrt(x*x+y*y) / window.boardscale;
+        window.scrollorigin = {
+          x: (e.touches[0].pageX + e.touches[1].pageX)/2 - window.boardorigin.x,
+          y: (e.touches[0].pageY + e.touches[1].pageY)/2 - window.boardorigin.y
+        }
+      }
+    },
+    touchmove: function(e) {
+      e.stopPropagation();
+      if (e.touches[1]) {
+        e.preventDefault();
+        var x = e.touches[1].pageX - e.touches[0].pageX, y = e.touches[1].pageY - e.touches[0].pageY,
+            scrollorigin = {
+              x: (e.touches[0].pageX + e.touches[1].pageX)/2,
+              y: (e.touches[0].pageY + e.touches[1].pageY)/2
+            };
+        window.boardorigin = {x: scrollorigin.x - window.scrollorigin.x, y: scrollorigin.y - window.scrollorigin.y};
+        window.boardscale = Math.sqrt(x*x+y*y) / window.pinchscale;
+        $("#boardContainer").style.transform = "translate(" + window.boardorigin.x +
+          "px, " + window.boardorigin.y + "px) scale(" + window.boardscale + ")"
+      }
     }
   }
 });
 
 // Init
-var dim = 50, boxpix = 8, grid = new Array(dim), walls = new Array(dim),
+var dim = 50, boxpix = 12, grid = new Array(dim), walls = new Array(dim),
     board = $("canvas#board"), bctx = board.getContext('2d'),
-    difficulty = parseInt($("nav > input[type=radio]:checked").id.substr(-1,1)), nowdif = 1;
+    difficulty = parseInt($("nav > input[type=radio]:checked").id.substr(-1,1)), nowdif = 1,
+    scores = [null,[],[],[],[]],
+    boardscale = 1, boardorigin = {x:0, y:0};
 for (var z = 0; z < dim; z++) {
   grid[z] = new Array(dim).fill(0);
   walls[z] = new Array(dim).fill(0);
 }
 board.height = dim*boxpix;
 board.width = dim*boxpix;
-new Drum().then(function (drum) { window.drum = drum }).then(showPBs)
+bctx.fillStyle = "#ff6";
+bctx.fillRect(25*boxpix, 25*boxpix, boxpix, boxpix);
+new Drum().then(function (drum) { return (window.drum = drum).getVals() }).then(showPBs);
 stepBoard();
   </script>
 </body>
