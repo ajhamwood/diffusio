@@ -15,7 +15,8 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  flex-direction: column
+  flex-direction: column;
+  overflow: hidden
 }
 boardContainer, svg, canvas {
   height: 601px;
@@ -304,8 +305,7 @@ addEvents({
 var dim = 50, boxpix = 12, grid = new Array(dim), walls = new Array(dim),
     board = $("canvas#board"), bctx = board.getContext('2d'),
     difficulty = parseInt($("nav > input[type=radio]:checked").id.substr(-1,1)), nowdif = 1,
-    scores = [null,[],[],[],[]],
-    boardscale = 1, boardorigin = {x:0, y:0};
+    scores = [null,[],[],[],[]], boardscale = 1, boardorigin = {x:0, y:0};
 for (var z = 0; z < dim; z++) {
   grid[z] = new Array(dim).fill(0);
   walls[z] = new Array(dim).fill(0);
