@@ -30,40 +30,67 @@ canvas {
   position: absolute;
   z-index: -1
 }
-#complete {
+#scorewrapper {
+  z-index: 1;
+  position: absolute;
+  left: -1rem;
+  top: -1.7rem
+}
+#score {
+  background: #d00;
+  color: #fff;
+  width: 9rem;
+  height: 9rem;
+  border-radius: 4.5rem;
+  display: inline-block;
+  line-height: 9rem;
   text-align: center;
+  font-size: 3.5rem
+}
+#gameover {
+  width: 100%;
+  height: 100%;
+  padding-top: .5rem;
   position: fixed;
   z-index: 1;
+  text-align: center
+}
+#gameover > h1 {
+  display: inline;
   border: 2px solid #f66;
   background: #fff;
-  padding: 0 .3rem
+  padding: 0 .3rem;
+  border-radius: 1rem
 }
 nav {
   position: fixed;
-  height: 100%;
-  left: 0;
+  height: calc(100% - 1rem);
+  right: 0;
   top: 0;
-  padding-left: 2rem;
   font-size: large;
-  z-index: 1
+  z-index: 1;
+  padding: .5rem;
+  display: flex;
+  justify-content: space-between;
+  flex-direction: column
 }
 nav > label {
-  display: block;
   border-radius: .8rem;
   background: #f77;
   padding: .3rem .5rem;
-  margin: .5rem 1rem;
   text-align: center;
   border: 2px solid #fff;
   cursor: pointer;
-  width: 1em
+  width: 1em;
+  margin-bottom: .5rem
 }
 input:checked + label {
   border: 2px solid #f77;
   background: #fff
 }
 input[type=checkbox] + label {
-  margin-top: 1rem;
+  margin-top: 2.5rem;
+  margin-bottom: 0
 }
 input[type=checkbox]:checked + label {
   width: 18rem;
@@ -73,36 +100,57 @@ input[type=checkbox]:checked + label::after {
   content: attr(data-tg-on);
   font-size: small
 }
-#pbswrapper {
-  position: fixed;
-  height: 100%;
-  right: 0;
-  top: 0;
-  padding-right: 2rem;
-  font-size: large
-}
-.pb {
-  margin-left: 1rem
-}
-.hide, nav > input {
+body:not(.complete) > #scorewrapper,
+body:not(.complete) > #gameover,
+nav > input {
   display: none
 }
 @media (max-height: 600px) {
-  body {
-    justify-content: flex-start
+}
+@media (max-aspect-ratio:1/1) {
+  #gameover {
+    width: calc(100% - 5rem);
+    right: 0;
+    padding-top: 0;
+    top: 0
+  }
+  #gameover > h1 {
+    display: inline-block;
+    padding-left: 3rem;
+    margin: .5rem;
+    border-radius: 0
+  }
+  nav {
+    height: initial;
+    width: calc(100% - 1rem);
+    top: initial;
+    right: 0;
+    bottom: 0;
+    flex-direction: row
+  }
+  nav > label {
+    width: initial;
+    height: 1.4em;
+    margin-bottom: auto;
+    margin-right: .5rem;
+    padding: .3rem .8rem
+  }
+  input[type=checkbox] + label {
+    margin: auto 0 auto 2.5rem
   }
 }
 @media (min-height: 601px) {
-  #complete {
-    top: 2rem
+  #gameover {
+    z-index: 1
   }
 }
   </style>
 </head>
 <body>
-  <h1 id="complete" class="hide">Game over! Score: <span id="score"></span></h1>
+  <div id="gameover">
+    <h1>Game over! Best: <span id="pb"></span></h1>
+  </div>
   <nav>
-    <h3>Difficulty</h3>
     <input type="radio" name="nav" id="rad1" value="1" checked>
     <label for="rad1">1</label>
     <input type="radio" name="nav" id="rad2" value="2">
@@ -119,6 +167,9 @@ input[type=checkbox]:checked + label::after {
     Try to get the lowest number that you can!
     ">&#x2139;&#x20dd;</label>
   </nav>
+  <div id="scorewrapper">
+    <span id="score"></span>
+  </div>
   <div id="boardContainer">
     <svg xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -133,13 +184,6 @@ input[type=checkbox]:checked + label::after {
       <rect width="100%" height="100%" fill="url(#grid)" />
     </svg>
     <canvas id="board"></canvas>
-  </div>
-  <div id="pbswrapper">
-    <h3>Lowscores</h3>
-    <div id="pbs"></div>
-  </div>
-  <div id="stamps" class="hide">
-    <div id="pb"><div class="pb"></div></div>
   </div>
   <script>
 // Utilities
@@ -219,25 +263,19 @@ function addWall(x, y, s) {
 }
 
 function finishBoard() {
-  $("#complete").classList.remove("hide");
+  $("body").classList.add("complete");
   var score = 0, i, j;
   for (i = 0; i < dim; i++) for (j = 0; j < dim; j++) grid[i][j] == 0 || score++;
   $("#score").textContent = score;
   scores[difficulty].push(score);
   scores[difficulty].sort(function(a,b) {return a-b});
   drum.appendVal({score, difficulty});
-  showPBs(scores[difficulty])
+  showPB()
 }
 
-function showPBs(vals) {
+function showPB(vals) {
   if (scores[difficulty].length == 0) scores[difficulty] = vals.map(function(x) {return parseInt(x.score)});
-  var node, pbs = $("#pbs");
-  while (pbs.hasChildNodes()) pbs.removeChild(pbs.lastChild);
-  for (var i = 0; i < scores[difficulty].length && i < 20; i++) {
-    node = $("#pb > div").cloneNode(true);
-    node.appendChild(document.createTextNode(scores[difficulty][i]));
-    $("#pbs").appendChild(node);
-  }
+  $("#pb").textContent = scores[difficulty][0]
 }
 
 // Events
@@ -256,17 +294,18 @@ addEvents({
   },
   "nav > input[type=radio] + label": {
     click: function (e) {
+      console.log(e);
       bctx.fillStyle = "#fff";
       bctx.fillRect(0, 0, dim*boxpix, dim*boxpix);
       bctx.fillStyle = "#ff6";
       bctx.fillRect(25*boxpix, 25*boxpix, boxpix, boxpix);
-      $("#complete").classList.contains("hide") || $("#complete").classList.add("hide");
+      $("body").classList.contains("complete") && $("body").classList.remove("complete");
       grid.forEach(function (x) {x.fill(0)});
       walls.forEach(function (x) {x.fill(0)});
       difficulty = parseInt(e.target.htmlFor.substr(-1,1));
       nowdif = 1;
-      if (scores[difficulty].length == 0) drum.getVals().then(showPBs);
-      else showPBs(scores[difficulty]);
+      if (scores[difficulty].length == 0) drum.getVals().then(showPB);
+      else showPB();
       stepBoard()
     }
   },
@@ -281,6 +320,7 @@ addEvents({
           x: (e.touches[0].pageX + e.touches[1].pageX)/2 - window.boardorigin.x,
           y: (e.touches[0].pageY + e.touches[1].pageY)/2 - window.boardorigin.y
         }
+        console.log(window.scrollorigin)
       }
     },
     touchmove: function(e) {
@@ -292,8 +332,11 @@ addEvents({
               x: (e.touches[0].pageX + e.touches[1].pageX)/2,
               y: (e.touches[0].pageY + e.touches[1].pageY)/2
             };
-        window.boardorigin = {x: scrollorigin.x - window.scrollorigin.x, y: scrollorigin.y - window.scrollorigin.y};
         window.boardscale = Math.sqrt(x*x+y*y) / window.pinchscale;
+        window.boardorigin = {
+          x: scrollorigin.x - window.scrollorigin.x,
+          y: scrollorigin.y - window.scrollorigin.y
+        };
         $("#boardContainer").style.transform = "translate(" + window.boardorigin.x +
           "px, " + window.boardorigin.y + "px) scale(" + window.boardscale + ")"
       }
@@ -314,7 +357,7 @@ board.height = dim*boxpix;
 board.width = dim*boxpix;
 bctx.fillStyle = "#ff6";
 bctx.fillRect(25*boxpix, 25*boxpix, boxpix, boxpix);
-new Drum().then(function (drum) { return (window.drum = drum).getVals() }).then(showPBs);
+new Drum().then(function (drum) { return (window.drum = drum).getVals() }).then(showPB);
 stepBoard();
   </script>
 </body>
